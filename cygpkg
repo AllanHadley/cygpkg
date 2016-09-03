@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+
+LOCAL_PACKAGE_DIR=/install
+MIRROR=http://cygwin.mirror.constant.com/
+
+ARCH=x86
+uname -a | grep -q x86_64 && ARCH=x86_64
+
+SETUP=/usr/libexec/setup-$ARCH
+SETUP_DOWNLOAD_URL=https://cygwin.com/setup-$ARCH.exe
+SETUP_ARGS=
+SETUP_ARGS="$SETUP_ARGS --no-shortcuts"
+SETUP_ARGS="$SETUP_ARGS --download"
+SETUP_ARGS="$SETUP_ARGS --local-install"
+SETUP_ARGS="$SETUP_ARGS --local-package-dir $(cygpath --absolute --windows "$LOCAL_PACKAGE_DIR")"
+SETUP_ARGS="$SETUP_ARGS --arch $ARCH"
+SETUP_ARGS="$SETUP_ARGS --root $(cygpath --absolute --windows /)"
+SETUP_ARGS="$SETUP_ARGS --site $MIRROR"
+SETUP_ARGS="$SETUP_ARGS --quiet-mode"
+
+function download() {
+    local from=$1
+    local to=$2
+    local toWindows=$(cygpath --absolute --windows "$to")
+    local foundTool=false
+
+    # do we have curl
+    if which curl 2>&1 > /dev/null; then
+        echo "Downloading with curl..."
+        foundTool=true
+        if curl -o "$to" "$from"; then
+            return 0
+        else
+            echo "Failed to download"
+            return -1
+        fi
+    fi
+
+    # do we have wget
+    if which wget 2>&1 > /dev/null; then
+        echo "Downloading with wget..."
+        foundTool=true
+        if wget -O "$to" "$from"; then
+            return 0
+        else
+            echo "Failed to download"
+            return -1
+        fi
+    fi
+
+    # do we have powershell 3
+    if which powershell 2>&1 > /dev/null &&
+        powershell -Version 3.0 -Command "exit" 2>&1 > /dev/null
+    then
+        echo "trying to download with Powershell..."
+        foundTool=true
+        if powershell -Version 3.0 -NonInteractive -Command "wget $from -OutFile \"$toWindows\""
+        then
+            return 0
+        else
+            echo "Failed to download with powershell."
+            echo "Version 3 or newer needed."
+        fi
+    fi
+
+    # can we do it with VBScript using WScript
+    if which wscript 2>&1 > /dev/null; then
+        foundTool=true
+        echo "Trying to download with WScript..."
+        # try using vbscript
+        local scriptFile=$(mktemp).vbs
+        local scriptFileWinPath=$(cygpath --absolute --windows "$scriptFile")
+
+        return -1
+        trap "rm -f $scriptFile" EXIT
+        cat > $scriptFile <<__END_VBSCRIPT__
+dim xHttp: Set xHttp = createobject("Microsoft.XMLHTTP")
+dim bStrm: Set bStrm = createobject("Adodb.Stream")
+xHttp.Open "GET", "$from", False
+xHttp.Send
+
+with bStrm
+    .type = 1 '//binary
+    .open
+    .write xHttp.responseBody
+    .savetofile "$toWindows", 2 '//overwrite
+end with
+__END_VBSCRIPT__
+        
+        if wscript "$scriptFileWinPath"
+        then
+            return 0
+        else
+            echo "Failed to download with WScript"
+        fi
+    fi
+
+    echo "Failed to download $from -> $to"
+    if ! $foundTool; then
+        echo "Could not find a tool for downloading: install, wget, curl, or powershell 3 or newer"
+    fi
+    return -1
+}
+
+if ! [ -d "$LOCAL_PACKAGE_DIR" ]; then
+    if ! [ -e "$LOCAL_PACKAGE_DIR" ]; then
+        if ! mkdir -p "$LOCAL_PACKAGE_DIR"; then
+            echo "Failed to create package directory at '$LOCAL_PACKAGE_DIR'"
+            exit
+        fi
+    fi
+fi
+
+[ -e "$LOCAL_PACKAGE_DIR" ] || mkdir -p "$LOCAL_PACKAGE_DIR" 2>&1 > /dev/null
+
+case "$1" in
+    search)
+        shift
+        cygcheck --package-query $1 | grep -i "$1"
+        ;;
+    install)
+        shift
+        ${SETUP} $SETUP_ARGS --packages $@
+        ;;
+    upgrade)
+        ${SETUP} --delete-orphans --upgrade-also
+        ;;
+    remove)
+        shift
+        ${SETUP} $SETUP_ARGS --delete-orphans --remove-packages $@
+        ;;
+    update)
+        download "$SETUP_DOWNLOAD_URL" "$SETUP"
+        ;;
+    *)
+        echo $0 '[update|search|install|upgrade|remove]'
+        ;;
+esac
+

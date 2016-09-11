@@ -6,7 +6,7 @@ MIRROR=http://cygwin.mirror.constant.com/
 ARCH=x86
 uname -a | grep -q x86_64 && ARCH=x86_64
 
-SETUP=/usr/libexec/setup-$ARCH
+SETUP=/usr/libexec/setup-$ARCH.exe
 SETUP_DOWNLOAD_URL=https://cygwin.com/setup-$ARCH.exe
 SETUP_ARGS=
 SETUP_ARGS="$SETUP_ARGS --no-shortcuts"
@@ -116,7 +116,7 @@ fi
 case "$1" in
     search)
         shift
-        cygcheck --package-query $1 | grep -i "$1"
+        cygcheck $SETUP_ARGS --package-query $1 | grep -i "$1"
         ;;
     install)
         shift

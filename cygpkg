@@ -9,6 +9,7 @@ uname -a | grep -q x86_64 && ARCH=x86_64
 SETUP=/usr/libexec/setup-$ARCH.exe
 SETUP_DOWNLOAD_URL=https://cygwin.com/setup-$ARCH.exe
 SETUP_ARGS=
+SETUP_ARGS="$SETUP_ARGS --quiet-mode"
 SETUP_ARGS="$SETUP_ARGS --no-shortcuts"
 SETUP_ARGS="$SETUP_ARGS --download"
 SETUP_ARGS="$SETUP_ARGS --local-install"
@@ -16,7 +17,6 @@ SETUP_ARGS="$SETUP_ARGS --local-package-dir $(cygpath --absolute --windows "$LOC
 SETUP_ARGS="$SETUP_ARGS --arch $ARCH"
 SETUP_ARGS="$SETUP_ARGS --root $(cygpath --absolute --windows /)"
 SETUP_ARGS="$SETUP_ARGS --site $MIRROR"
-SETUP_ARGS="$SETUP_ARGS --quiet-mode"
 
 function download() {
     local from=$1
@@ -32,7 +32,7 @@ function download() {
             return 0
         else
             echo "Failed to download"
-            return -1
+            return -1;
         fi
     fi
 
@@ -92,6 +92,7 @@ __END_VBSCRIPT__
             return 0
         else
             echo "Failed to download with WScript"
+            return -1
         fi
     fi
 
@@ -101,6 +102,7 @@ __END_VBSCRIPT__
     fi
     return -1
 }
+
 
 if ! [ -d "$LOCAL_PACKAGE_DIR" ]; then
     if ! [ -e "$LOCAL_PACKAGE_DIR" ]; then
@@ -116,14 +118,19 @@ fi
 case "$1" in
     search)
         shift
-        cygcheck $SETUP_ARGS --package-query $1 | grep -i "$1"
+        if [ "$1" = -v ] || [ "$1" = --verbose ] || [ "$1" = --all ]; then
+            shift
+            cygcheck --package-query $1
+        else
+            cygcheck --package-query $1 | grep -i "$1"
+        fi
         ;;
     install)
         shift
         ${SETUP} $SETUP_ARGS --packages $@
         ;;
     upgrade)
-        ${SETUP} --delete-orphans --upgrade-also
+        ${SETUP} $SETUP_ARGS --delete-orphans --upgrade-also
         ;;
     remove)
         shift
@@ -136,4 +143,3 @@ case "$1" in
         echo $0 '[update|search|install|upgrade|remove]'
         ;;
 esac
-
